@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy
 
 on:
   push:
@@ -25,18 +25,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Build pages
-        run: node tools/build.mjs
-      - name: Test Dorothy AI routing
-        run: node tests/ai.test.mjs
-      - name: Prepare site
-        run: |
-          mkdir _site
-          cp -r *.html css js data assets vendor _site/
-          touch _site/.nojekyll
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: dist
       - id: deployment
         uses: actions/deploy-pages@v4

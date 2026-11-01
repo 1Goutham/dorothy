@@ -1,18 +1,20 @@
 /*
- * Dorothy — 3D Kolam
+ * Dorothy, 3D Kolam
  * A single unbroken line woven around a grid of pulli (dots), the way a sikku
  * kolam is drawn at a Tamil threshold each morning. Rendered as a lit tube
  * that draws itself once, then rests and follows the pointer.
  */
-import * as THREE from "three";
+import {
+  ACESFilmicToneMapping, Color, Curve, DirectionalLight, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, PerspectiveCamera, PointLight, SRGBColorSpace, Scene, SphereGeometry, TubeGeometry, Vector3, WebGLRenderer,
+} from "three";
 
 const RED = 0xe1251b;
 
 /* A closed curve that loops around each dot of a diamond grid.
    Built from a hypotrochoid plus a gentle over/under wave in z. */
-class KolamCurve extends THREE.Curve {
+class KolamCurve extends Curve {
   constructor(scale = 1) { super(); this.scale = scale; }
-  getPoint(t, target = new THREE.Vector3()) {
+  getPoint(t, target = new Vector3()) {
     const a = t * Math.PI * 2;
     const R = 4, r = 1, d = 2.35;            // 4-fold symmetry, looping petals
     const k = (R - r) / r;
@@ -23,9 +25,9 @@ class KolamCurve extends THREE.Curve {
   }
 }
 
-class InnerCurve extends THREE.Curve {
+class InnerCurve extends Curve {
   constructor(scale = 1) { super(); this.scale = scale; }
-  getPoint(t, target = new THREE.Vector3()) {
+  getPoint(t, target = new Vector3()) {
     const a = t * Math.PI * 2;
     const r = 1.25 + 0.42 * Math.cos(4 * a);
     return target.set(r * Math.cos(a + Math.PI / 4), r * Math.sin(a + Math.PI / 4), 0.22 * Math.sin(4 * a)).multiplyScalar(this.scale);
@@ -37,57 +39,57 @@ export function mountKolam(stage) {
 
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
+    renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
   } catch (e) {
     return null; // keep SVG fallback
   }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.outputColorSpace = SRGBColorSpace;
+  renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   stage.appendChild(renderer.domElement);
   renderer.domElement.setAttribute("aria-hidden", "true");
 
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
-  camera.position.set(0, 0, 16.5);
+  const scene = new Scene();
+  const camera = new PerspectiveCamera(32, 1, 0.1, 100);
+  camera.position.set(0, 0, 14.2);
 
-  /* Lights: low ambient, warm key, red rim — sculptural, not glossy */
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x1a0503, 0.35));
-  const key = new THREE.DirectionalLight(0xfff1e6, 2.4);
+  /* Lights: low ambient, warm key, red rim, sculptural, not glossy */
+  scene.add(new HemisphereLight(0xffffff, 0x1a0503, 0.35));
+  const key = new DirectionalLight(0xfff1e6, 2.4);
   key.position.set(-5, 6, 8);
   scene.add(key);
-  const rim = new THREE.PointLight(RED, 60, 30, 1.6);
+  const rim = new PointLight(RED, 60, 30, 1.6);
   rim.position.set(6, -4, -3);
   scene.add(rim);
-  const fill = new THREE.PointLight(0xffffff, 12, 30, 2);
+  const fill = new PointLight(0xffffff, 12, 30, 2);
   fill.position.set(4, 3, 6);
   scene.add(fill);
 
-  const root = new THREE.Group();
+  const root = new Group();
   scene.add(root);
 
   /* Main woven line */
   const segs = 1400, radial = 20;
-  const tubeGeo = new THREE.TubeGeometry(new KolamCurve(0.78), segs, 0.085, radial, true);
-  const tubeMat = new THREE.MeshPhysicalMaterial({
+  const tubeGeo = new TubeGeometry(new KolamCurve(0.78), segs, 0.085, radial, true);
+  const tubeMat = new MeshPhysicalMaterial({
     color: RED, roughness: 0.38, metalness: 0.08, clearcoat: 0.6, clearcoatRoughness: 0.35,
-    sheen: 0.4, sheenColor: new THREE.Color(0xff6a5c),
+    sheen: 0.4, sheenColor: new Color(0xff6a5c),
   });
-  const tube = new THREE.Mesh(tubeGeo, tubeMat);
+  const tube = new Mesh(tubeGeo, tubeMat);
   root.add(tube);
 
-  /* Inner line — chalk white, thinner */
-  const innerGeo = new THREE.TubeGeometry(new InnerCurve(0.78), 600, 0.04, 12, true);
-  const innerMat = new THREE.MeshStandardMaterial({ color: 0xf3f1ee, roughness: 0.75, metalness: 0 });
-  const inner = new THREE.Mesh(innerGeo, innerMat);
+  /* Inner line, chalk white, thinner */
+  const innerGeo = new TubeGeometry(new InnerCurve(0.78), 600, 0.04, 12, true);
+  const innerMat = new MeshStandardMaterial({ color: 0xf3f1ee, roughness: 0.75, metalness: 0 });
+  const inner = new Mesh(innerGeo, innerMat);
   root.add(inner);
 
-  /* Pulli — the dot grid the line is drawn around (diamond layout) */
-  const dotGeo = new THREE.SphereGeometry(0.075, 20, 20);
-  const dotMat = new THREE.MeshStandardMaterial({ color: 0xf3f1ee, roughness: 0.4, emissive: 0x2a2a2a });
-  const dots = new THREE.InstancedMesh(dotGeo, dotMat, 41);
-  const m = new THREE.Matrix4();
+  /* Pulli, the dot grid the line is drawn around (diamond layout) */
+  const dotGeo = new SphereGeometry(0.075, 20, 20);
+  const dotMat = new MeshStandardMaterial({ color: 0xf3f1ee, roughness: 0.4, emissive: 0x2a2a2a });
+  const dots = new InstancedMesh(dotGeo, dotMat, 41);
+  const m = new Matrix4();
   let n = 0;
   const step = 1.15;
   for (let i = -4; i <= 4; i++) {
@@ -106,10 +108,10 @@ export function mountKolam(stage) {
   const fullTube = tubeGeo.index.count;
   const fullInner = innerGeo.index.count;
   const drawDur = reduce ? 0 : 2600;
-  const t0 = performance.now();
+  let t0 = null; // the line starts drawing the first time it comes into view
   const ease = (x) => 1 - Math.pow(1 - x, 4);
 
-  /* Pointer — eased toward target, never snaps */
+  /* Pointer, eased toward target, never snaps */
   const target = { x: 0, y: 0 }, cur = { x: 0, y: 0 };
   const onMove = (e) => {
     const p = e.touches ? e.touches[0] : e;
@@ -130,14 +132,18 @@ export function mountKolam(stage) {
   resize();
 
   let visible = true, raf = 0, last = performance.now();
-  const io = new IntersectionObserver(([en]) => { visible = en.isIntersecting; if (visible) loop(); }, { threshold: 0 });
+  const io = new IntersectionObserver(([en]) => {
+    visible = en.isIntersecting;
+    if (visible && t0 === null && en.intersectionRatio > 0.3) t0 = performance.now();
+    if (visible) loop();
+  }, { threshold: [0, 0.35] });
   io.observe(stage);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) loop(); });
 
   function frame(now) {
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
-    const p = drawDur ? Math.min((now - t0) / drawDur, 1) : 1;
+    const p = t0 === null ? 0 : drawDur ? Math.min((now - t0) / drawDur, 1) : 1;
     const e = ease(p);
     tubeGeo.setDrawRange(0, Math.floor((fullTube * e) / 3) * 3);
     innerGeo.setDrawRange(0, Math.floor((fullInner * Math.max(0, (e - 0.25) / 0.75)) / 3) * 3);
@@ -153,7 +159,7 @@ export function mountKolam(stage) {
     rim.position.x = 6 + cur.x * 3;
 
     renderer.render(scene, camera);
-    return p < 1 || !reduce;
+    return t0 === null || p < 1 || !reduce;
   }
 
   function loop() {
@@ -176,5 +182,4 @@ export function mountKolam(stage) {
   };
 }
 
-const stage = document.querySelector("[data-kolam]");
-if (stage) mountKolam(stage);
+document.querySelectorAll("[data-kolam]").forEach(mountKolam);

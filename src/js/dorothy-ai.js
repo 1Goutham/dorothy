@@ -1,15 +1,15 @@
 /*
- * Dorothy AI — retrieval-first, bilingual (Tamil / English) assistant.
+ * Dorothy AI, retrieval-first, bilingual (Tamil / English) assistant.
  *
  * How it answers:
- *  1. Safety first — if a message suggests someone may be at risk, crisis support is shown
+ *  1. Safety first, if a message suggests someone may be at risk, crisis support is shown
  *     before anything else.
- *  2. Retrieval — the question is matched (BM25 + Tamil-aware prefix matching) against the
+ *  2. Retrieval, the question is matched (BM25 + Tamil-aware prefix matching) against the
  *     verified knowledge base in /data/knowledge.js. Only verified passages can be used.
- *  3. Answer — by default the verified passage is shown directly, with its sources. If an
+ *  3. Answer, by default the verified passage is shown directly, with its sources. If an
  *     `aiEndpoint` is configured (see /worker), the retrieved passages are sent to a small
- *     LLM that may only rephrase them — it is told to refuse anything not in the passages.
- *  4. Honesty — when nothing matches well, Dorothy says so and points to a human.
+ *     LLM that may only rephrase them, it is told to refuse anything not in the passages.
+ *  4. Honesty, when nothing matches well, Dorothy says so and points to a human.
  *
  * Runs entirely in the browser by default: no server, no storage, no tracking.
  */
@@ -89,7 +89,7 @@
   const GREET = /^(hi|hey|hello|hai|vanakkam|vanakam|good (morning|evening|afternoon)|வணக்கம்)\b/i;
   const THANKS = /^(thanks|thank you|thx|nandri|நன்றி)\b/i;
 
-  /* Public engine — also used by tests */
+  /* Public engine, also used by tests */
   const engine = {
     tokens, isCrisis,
     index: null,
@@ -116,8 +116,8 @@
 
   const T = {
     en: {
-      greet: "<p>Vanakkam! I'm Dorothy. Ask me about identity documents, your rights, shelter, mental health support, scholarships or work — in English or Tamil.</p>",
-      thanks: "<p>Always here. Take care of yourself. 🤍</p>",
+      greet: "<p>Vanakkam! I'm Dorothy. Ask me about identity documents, your rights, shelter, mental health support, scholarships or work. English or Tamil, whichever you like.</p>",
+      thanks: "<p>Always here. Take care of yourself.</p>",
       unknown: "<p>I don't have verified information on that yet, and I'd rather not guess.</p><p>You can <a href=\"get-involved.html#contact\">ask a person from the Dorothy team</a>, or try one of these:</p>",
       crisisLead: "<p><strong>You don't have to go through this alone.</strong> Please reach out to someone right now:</p>",
       sources: "Verified sources", reviewed: "Last reviewed", related: "You might also ask",
@@ -125,8 +125,8 @@
       ai: "Phrased by Dorothy AI from the sources below",
     },
     ta: {
-      greet: "<p>வணக்கம்! நான் டோரதி. அடையாள ஆவணங்கள், உங்கள் உரிமைகள், தங்குமிடம், மனநல ஆதரவு, கல்வி உதவித்தொகை, வேலை — எதைப் பற்றியும் தமிழிலோ ஆங்கிலத்திலோ கேளுங்கள்.</p>",
-      thanks: "<p>எப்போதும் இங்கே இருக்கிறேன். உங்களைக் கவனித்துக் கொள்ளுங்கள். 🤍</p>",
+      greet: "<p>வணக்கம்! நான் டோரதி. அடையாள ஆவணங்கள், உங்கள் உரிமைகள், தங்குமிடம், மனநல ஆதரவு, கல்வி உதவித்தொகை, வேலை, எதைப் பற்றியும் தமிழிலோ ஆங்கிலத்திலோ கேளுங்கள்.</p>",
+      thanks: "<p>எப்போதும் இங்கே இருக்கிறேன். உங்களைக் கவனித்துக் கொள்ளுங்கள்.</p>",
       unknown: "<p>இதைப் பற்றி சரிபார்க்கப்பட்ட தகவல் என்னிடம் இன்னும் இல்லை; ஊகித்துச் சொல்ல விரும்பவில்லை.</p><p><a href=\"get-involved.html#contact\">டோரதி குழுவில் ஒருவரிடம் கேளுங்கள்</a>, அல்லது இவற்றில் ஒன்றை முயற்சிக்கவும்:</p>",
       crisisLead: "<p><strong>இதை நீங்கள் தனியாகக் கடக்க வேண்டியதில்லை.</strong> இப்போதே யாரையாவது அணுகுங்கள்:</p>",
       sources: "சரிபார்க்கப்பட்ட ஆதாரங்கள்", reviewed: "கடைசியாகச் சரிபார்த்தது", related: "இதையும் கேட்கலாம்",

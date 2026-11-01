@@ -1,8 +1,8 @@
-// Run: node tests/ai.test.mjs  — checks Dorothy AI routes questions to the right verified entry.
+// Run: node tests/ai.test.mjs , checks Dorothy AI routes questions to the right verified entry.
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 const ctx = { window: {}, globalThis: {} }; ctx.window = ctx; vm.createContext(ctx);
-for (const f of ["data/knowledge.js", "js/dorothy-ai.js"]) vm.runInContext(readFileSync(new URL("../" + f, import.meta.url), "utf8"), ctx);
+for (const f of ["src/data/knowledge.js", "src/js/dorothy-ai.js"]) vm.runInContext(readFileSync(new URL("../" + f, import.meta.url), "utf8"), ctx);
 const E = ctx.DorothyEngine;
 const cases = [
   ["So, who's behind Dorothy?", "about"], ["What's in your list?", "capabilities"], ["How can I reach you?", "contact"],

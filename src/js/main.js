@@ -1,4 +1,4 @@
-/* Dorothy — shared interactions. No dependencies. */
+/* Dorothy, shared interactions. No dependencies. */
 (function () {
   "use strict";
   const doc = document.documentElement;
@@ -38,7 +38,7 @@
     lastEsc = now;
   });
 
-  /* Reveal — once, quietly */
+  /* Reveal, once, quietly */
   const reveals = document.querySelectorAll(".reveal");
   if ("IntersectionObserver" in window && !reduce) {
     const io = new IntersectionObserver((entries) => {
@@ -49,7 +49,7 @@
     reveals.forEach((el) => io.observe(el));
   } else reveals.forEach((el) => el.classList.add("is-in"));
 
-  /* 3D tilt with soft glare — pointer devices only */
+  /* 3D tilt with soft glare, pointer devices only */
   if (fine && !reduce) {
     let current = null;
     const release = (card) => {
@@ -79,7 +79,7 @@
     p.addEventListener("click", () => p.classList.toggle("is-open"))
   );
 
-  /* Support cycle — a 3D ring that turns the chosen step to the front */
+  /* Support cycle, a 3D ring that turns the chosen step to the front */
   const ring = document.querySelector("[data-ring]");
   if (ring) {
     const nodes = Array.from(ring.querySelectorAll(".node"));
@@ -154,18 +154,18 @@
       data.forEach((v, k) => lines.push(k + ": " + v));
       if (cfg.formEndpoint) {
         try {
-          data.append("_subject", "Dorothy — " + kind);
+          data.append("_subject", "Dorothy, " + kind);
           const res = await fetch(cfg.formEndpoint, { method: "POST", body: data, headers: { Accept: "application/json" } });
           if (!res.ok) throw new Error(res.status);
           form.reset();
-          status.textContent = "Thank you — we received this. Someone from Dorothy will reach out.";
+          status.textContent = "Thank you, we received this. Someone from Dorothy will reach out.";
           return;
         } catch (err) {
           status.textContent = "Couldn't send right now. Opening your email app instead…";
         }
       }
       const mail = "mailto:" + (cfg.contactEmail || "hello@dorothy.in") +
-        "?subject=" + encodeURIComponent("Dorothy — " + kind) +
+        "?subject=" + encodeURIComponent("Dorothy, " + kind) +
         "&body=" + encodeURIComponent(lines.join("\n"));
       window.location.href = mail;
       status.textContent = "Your email app should open with this message ready to send.";

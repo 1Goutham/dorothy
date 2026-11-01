@@ -1,4 +1,4 @@
-/* Dorothy — Find help directory: filter + search, deep-linkable via #category */
+/* Dorothy, Find help directory: filter + search, deep-linkable via #category */
 (function () {
   "use strict";
   const grid = document.querySelector("[data-directory]");

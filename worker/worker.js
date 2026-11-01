@@ -1,5 +1,5 @@
 /*
- * Dorothy AI — optional grounded-answer worker (Cloudflare Workers, free tier).
+ * Dorothy AI, optional grounded-answer worker (Cloudflare Workers, free tier).
  *
  * The browser does retrieval and sends { question, lang, passages }. This worker asks a
  * small open model (Workers AI) to answer ONLY from those verified passages, in Tamil or

@@ -1,0 +1,17 @@
+{
+  "name": "dorothy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A free, community-led support ecosystem for transgender people in India, starting in Tamil Nadu.",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "dev": "node tools/build.mjs && node tools/serve.mjs",
+    "test": "node tests/ai.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0",
+    "three": "0.160.0"
+  },
+  "engines": { "node": ">=18" }
+}
