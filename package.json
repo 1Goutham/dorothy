@@ -13,5 +13,5 @@
     "esbuild": "0.24.0",
     "three": "0.160.0"
   },
-  "engines": { "node": ">=18" }
+  "engines": { "node": "20.x" }
 }

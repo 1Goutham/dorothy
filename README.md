@@ -32,7 +32,7 @@ Writes a minified, fingerprinted site to `dist/` with a Content-Security-Policy,
 
 ## Deploy
 
-Push to `main`. `.github/workflows/deploy.yml` tests, builds and publishes `dist/` to GitHub Pages (Settings → Pages → Source: GitHub Actions). Cloudflare Pages and Netlify work too: build command `npm run build`, output `dist`.
+Push to `main`. `.github/workflows/deploy.yml` tests, builds and publishes `dist/` to GitHub Pages (Settings → Pages → Source: GitHub Actions). Vercel uses `vercel.json`. Cloudflare Pages and Netlify work too: build command `npm run build`, output `dist`.
 
 ## Structure
 
