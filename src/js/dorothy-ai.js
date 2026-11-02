@@ -1,17 +1,14 @@
 /*
- * Dorothy AI, retrieval-first, bilingual (Tamil / English) assistant.
+ * Dorothy AI: a bilingual (Tamil / English) RAG assistant over a verified knowledge base.
  *
- * How it answers:
- *  1. Safety first, if a message suggests someone may be at risk, crisis support is shown
- *     before anything else.
- *  2. Retrieval, the question is matched (BM25 + Tamil-aware prefix matching) against the
- *     verified knowledge base in /data/knowledge.js. Only verified passages can be used.
- *  3. Answer, by default the verified passage is shown directly, with its sources. If an
- *     `aiEndpoint` is configured (see /worker), the retrieved passages are sent to a small
- *     LLM that may only rephrase them, it is told to refuse anything not in the passages.
- *  4. Honesty, when nothing matches well, Dorothy says so and points to a human.
- *
- * Runs entirely in the browser by default: no server, no storage, no tracking.
+ *  1. Safety first: messages that suggest someone may be at risk get crisis support
+ *     immediately, in the browser, without any network call.
+ *  2. Retrieval: the question goes to /api/ask, which embeds it with BAAI/bge-m3 and
+ *     compares it with every verified entry (blended with keyword search). If that service
+ *     is unavailable, the same BM25 search runs here in the browser instead.
+ *  3. Answer: the verified entry is shown with its sources. When a chat model is configured
+ *     on the server, it may rephrase only the retrieved passages.
+ *  4. Honesty: when nothing matches well, Dorothy says so and points to a person.
  */
 (function (root) {
   "use strict";
@@ -140,7 +137,6 @@
     const q = doc.q.find((x) => (lang === "ta") === TA.test(x)) || doc.q[0];
     return lang === "ta" ? q : q.charAt(0).toUpperCase() + q.slice(1) + "?";
   };
-  const plain = (html) => html.replace(/<li>/g, "\n• ").replace(/<\/p>/g, "\n").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").trim();
 
   function mount(el) {
     const log = el.querySelector(".log");
@@ -180,14 +176,53 @@
     };
     const byId = (id) => (root.DOROTHY_KB || []).find((d) => d.id === id);
 
+    /* Semantic retrieval on the server (BGE-M3). Returns null when unavailable. */
+    const endpoint = cfg.askEndpoint === undefined ? "/api/ask" : cfg.askEndpoint;
+    async function semantic(question, lang) {
+      if (!endpoint) return null;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15000);
+      try {
+        const r = await fetch(endpoint, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question, lang }), signal: ctrl.signal,
+        });
+        if (!r.ok) return null;
+        const j = await r.json();
+        return j && Array.isArray(j.results) ? j : null;
+      } catch (e) { return null; } finally { clearTimeout(timer); }
+    }
+    let warmed = false;
+    const warm = () => {
+      if (warmed || !endpoint) return;
+      warmed = true;
+      fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ warm: true }) }).catch(() => {});
+    };
+    input.addEventListener("focus", warm, { once: true });
+
     async function respond(question) {
-      const res = engine.answer(question);
+      let res = engine.answer(question);
       // Tamil question → Tamil answer. English question → the language the visitor chose.
       const lang = res.lang === "ta" ? "ta" : pref;
       const t = T[lang];
 
       const wait = add("msg--bot", '<span class="thinking" aria-label="Dorothy is thinking"><i></i><i></i><i></i></span>');
-      await new Promise((r) => setTimeout(r, 420));
+      let generated = null;
+      if (res.type === "answer" || res.type === "unknown") {
+        const sem = await semantic(question, lang);
+        if (sem) {
+          const top = sem.results[0];
+          if (sem.confident && byId(top.id)) {
+            const related = sem.results.slice(1).filter((x) => x.score > top.score - 0.08).map((x) => byId(x.id)).filter(Boolean);
+            res = { type: "answer", lang: res.lang, doc: byId(top.id), related };
+            generated = sem.answer || null;
+          } else {
+            res = { type: "unknown", lang: res.lang };
+          }
+        }
+      } else {
+        await new Promise((r) => setTimeout(r, 300));
+      }
 
       let html = "";
       let cls = "msg--bot";
@@ -201,24 +236,11 @@
       } else if (res.type === "unknown") {
         html = t.unknown + '<div class="meta">' + ["certificate", "shelter", "mental-health"].map((id) => chip(byId(id), lang)).join("") + "</div>";
       } else {
-        let body = res.doc[lang];
-        let note = "";
-        if (cfg.aiEndpoint) {
-          try {
-            const passages = [res.doc].concat(res.related).map((d) => ({ id: d.id, text: plain(d[lang]), sources: d.src }));
-            const r = await fetch(cfg.aiEndpoint, {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ question, lang, passages }),
-            });
-            if (!r.ok) throw new Error(r.status);
-            const j = await r.json();
-            if (j && j.answer) {
-              body = j.answer.split(/\n{2,}/).map((p) => "<p>" + esc(p).replace(/\n/g, "<br>") + "</p>").join("");
-              note = `<div class="meta"><span class="tag tag--red">${t.ai}</span></div>`;
-            }
-          } catch (e) { note = ""; }
+        html = res.doc[lang];
+        if (generated) {
+          html = generated.split(/\n{2,}/).map((p) => "<p>" + esc(p).replace(/\n/g, "<br>") + "</p>").join("") +
+            `<div class="meta"><span class="tag tag--red">${t.ai}</span></div>`;
         }
-        html = body + note;
         if (res.related.length) html += `<div class="meta">${res.related.map((d) => chip(d, lang)).join("")}</div>`;
         else if (res.doc.follow) html += `<div class="meta">${res.doc.follow.slice(0, 2).map(byId).filter(Boolean).map((d) => chip(d, lang)).join("")}</div>`;
         html += srcBlock(res.doc, lang);

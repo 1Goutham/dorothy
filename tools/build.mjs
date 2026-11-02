@@ -48,7 +48,7 @@ cpSync(join(src, "assets"), join(out, "assets"), { recursive: true });
 
 /* Content-Security-Policy: only Dorothy itself, plus endpoints configured in config.js */
 const config = readFileSync(join(src, "js/config.js"), "utf8");
-const origins = [...config.matchAll(/(?:formEndpoint|aiEndpoint)\s*:\s*"([^"]+)"/g)]
+const origins = [...config.matchAll(/(?:formEndpoint|askEndpoint)\s*:\s*"([^"]+)"/g)]
   .map((m) => { try { return new URL(m[1]).origin; } catch { return null; } }).filter(Boolean);
 const csp = [
   "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data:",
