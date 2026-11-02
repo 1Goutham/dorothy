@@ -1,157 +1,117 @@
 /*
- * Dorothy hero: the goddess as a lit 3D relief.
- * A dense plane is displaced by a reconstructed depth map, relit per pixel from that
- * surface, and turned toward the viewer's pointer so the sculpture reveals real depth.
- * The flowers in her hands and the raised hands sway on their own pivots.
+ * Dorothy hero: the goddess as a sculpture in a dark gallery.
+ * She is unveiled by a single rising light, a ring of fire (thiruvachi) traces itself
+ * behind her, and the visitor's pointer becomes the light that rakes across the carving.
  */
 import {
   WebGLRenderer, Scene, PerspectiveCamera, PlaneGeometry, ShaderMaterial, Mesh, Group,
-  TextureLoader, SRGBColorSpace, LinearFilter, Vector2, Vector3, BufferGeometry,
-  Float32BufferAttribute, Points, AdditiveBlending, Color,
+  TextureLoader, SRGBColorSpace, LinearFilter, Vector2, Vector3, Color, AdditiveBlending,
 } from "three";
 
 const IMG_W = 1024, IMG_H = 1063;
 const ASPECT = IMG_W / IMG_H;
 
-/* Pivot (wrist) and centre of each moving part, in image pixels, with its reach and swing. */
-const PARTS = [
-  // flowers held up and out
-  { pivot: [150, 345], center: [140, 190], r: 150, amp: 0.05, speed: 0.55, phase: 0.0 },
-  { pivot: [905, 345], center: [920, 190], r: 150, amp: 0.05, speed: 0.5, phase: 1.7 },
-  // small flowers held at the side
-  { pivot: [100, 545], center: [105, 470], r: 95, amp: 0.06, speed: 0.7, phase: 0.9 },
-  { pivot: [955, 545], center: [965, 470], r: 95, amp: 0.06, speed: 0.65, phase: 2.6 },
-  // vines hanging from the lowest hands, a pendulum
-  { pivot: [125, 830], center: [110, 945], r: 140, amp: 0.07, speed: 0.6, phase: 0.4 },
-  { pivot: [935, 830], center: [955, 960], r: 140, amp: 0.07, speed: 0.58, phase: 2.1 },
-  // raised hands, a slow mudra
-  { pivot: [325, 175], center: [335, 95], r: 95, amp: 0.035, speed: 0.4, phase: 1.2 },
-  { pivot: [720, 175], center: [710, 95], r: 95, amp: 0.035, speed: 0.42, phase: 3.0 },
-];
-
-const toUv = ([x, y]) => new Vector2(x / IMG_W, 1 - y / IMG_H);
-
-const WARP_GLSL = /* glsl */ `
-  #define NP ${PARTS.length}
-  uniform vec2 uPivot[NP];
-  uniform vec2 uCenter[NP];
-  uniform float uRadius[NP];
-  uniform float uAngle[NP];
-  const float ASPECT = ${ASPECT.toFixed(5)};
-  vec2 warp(vec2 uv) {
-    vec2 p = vec2(uv.x * ASPECT, uv.y);
-    vec2 acc = vec2(0.0);
-    for (int i = 0; i < NP; i++) {
-      vec2 c = vec2(uCenter[i].x * ASPECT, uCenter[i].y);
-      float w = 1.0 - smoothstep(0.0, uRadius[i], distance(p, c));
-      w = w * w * (3.0 - 2.0 * w);
-      float a = -uAngle[i] * w;
-      vec2 pv = vec2(uPivot[i].x * ASPECT, uPivot[i].y);
-      vec2 d = p - pv;
-      vec2 r = vec2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a));
-      acc += (pv + r) - p;
-    }
-    p += acc;
-    return vec2(p.x / ASPECT, p.y);
-  }
-`;
-
-const vert = /* glsl */ `
+const figureVert = /* glsl */ `
   uniform sampler2D uDepth;
   uniform float uDepthScale;
-  uniform float uRise;
   varying vec2 vUv;
-  varying vec2 vWarp;
-  ${WARP_GLSL}
   void main() {
     vUv = uv;
-    vWarp = warp(uv);
-    float d = texture2D(uDepth, vWarp).r;
-    vec3 pos = position;
-    pos.z += d * uDepthScale * uRise;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    vec3 p = position;
+    p.z += texture2D(uDepth, uv).r * uDepthScale;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
   }
 `;
 
-const frag = /* glsl */ `
+const figureFrag = /* glsl */ `
   uniform sampler2D uColor;
+  uniform sampler2D uNormal;
   uniform sampler2D uDepth;
-  uniform vec2 uTexel;
-  uniform vec3 uKey;
-  uniform vec3 uRim;
-  uniform vec3 uRimColor;
-  uniform float uReveal;
-  uniform float uTime;
+  uniform vec3 uLight;
+  uniform float uLightAmt;
+  uniform vec3 uEmber;
+  uniform float uEmberAmt;
   varying vec2 vUv;
-  varying vec2 vWarp;
 
   void main() {
-    vec4 c = texture2D(uColor, vWarp);
-    float h  = texture2D(uDepth, vWarp).r;
-    float hx = texture2D(uDepth, vWarp + vec2(uTexel.x, 0.0)).r - texture2D(uDepth, vWarp - vec2(uTexel.x, 0.0)).r;
-    float hy = texture2D(uDepth, vWarp + vec2(0.0, uTexel.y)).r - texture2D(uDepth, vWarp - vec2(0.0, uTexel.y)).r;
-    vec3 n = normalize(vec3(-hx * 9.0, -hy * 9.0, 1.0));
-
-    float albedo = c.r;
-    vec3 V = vec3(0.0, 0.0, 1.0);
-    float key = max(dot(n, normalize(uKey)), 0.0);
-    vec3 H = normalize(normalize(uKey) + V);
-    float spec = pow(max(dot(n, H), 0.0), 38.0) * 0.55;
-    float rim = pow(max(dot(n, normalize(uRim)), 0.0), 3.0);
-    float edge = pow(1.0 - n.z, 1.6);
-
-    vec3 stone = vec3(albedo) * (0.42 + 0.62 * key) * vec3(0.93, 0.92, 0.9);
-    stone += spec * albedo * vec3(1.0, 0.97, 0.94);
-    stone += uRimColor * (rim * 0.5 + edge * 0.35) * albedo;
-    stone *= 0.72 + 0.28 * h;
-
-    // entrance: a band of light travels up the figure as it rises out of the dark
-    float front = uReveal * 1.25 - 0.1;
-    float shown = smoothstep(front, front - 0.12, 1.0 - vUv.y);
-    float band = exp(-pow((1.0 - vUv.y - front) * 14.0, 2.0)) * (1.0 - smoothstep(0.85, 1.0, uReveal));
-    stone += vec3(1.0, 0.82, 0.78) * band * 0.9 * c.a;
-
-    float a = smoothstep(0.3, 0.75, c.a) * shown * smoothstep(0.0, 0.16, vUv.y);
+    vec4 c = texture2D(uColor, vUv);
+    float a = smoothstep(0.3, 0.75, c.a) * smoothstep(0.0, 0.18, vUv.y);
     if (a < 0.01) discard;
-    gl_FragColor = vec4(stone, a);
+
+    vec3 n = normalize(texture2D(uNormal, vUv).xyz * 2.0 - 1.0);
+    float h = texture2D(uDepth, vUv).r;
+    float alb = pow(c.r, 1.15);
+    vec3 L = normalize(uLight);
+    vec3 V = vec3(0.0, 0.0, 1.0);
+
+    // warm gallery key light raking across the carving
+    float diff = max(dot(n, L), 0.0);
+    float spec = pow(max(dot(n, normalize(L + V)), 0.0), 80.0) * smoothstep(0.55, 0.9, c.r);
+    vec3 col = vec3(1.0, 0.95, 0.88) * alb * (0.03 + 1.35 * pow(diff, 1.25)) * uLightAmt;
+    col += vec3(1.0, 0.93, 0.82) * spec * 0.75 * uLightAmt;
+
+    // a faint cool fill so the shadows keep their form
+    col += vec3(0.62, 0.68, 0.8) * alb * 0.07 * (0.5 + 0.5 * n.y) * uLightAmt;
+
+    // ember light from the ring of fire behind her, only along the outline
+    float rim = texture2D(uDepth, vUv).g;
+    col += uEmber * rim * (0.3 + alb) * 0.8 * uEmberAmt;
+
+    // depth: recesses fall into shadow
+    col *= mix(0.55, 1.0, h);
+
+    gl_FragColor = vec4(col, a);
     #include <colorspace_fragment>
   }
 `;
 
-const dustVert = /* glsl */ `
-  attribute float aSize;
-  attribute float aSeed;
-  uniform float uTime;
-  uniform float uPx;
-  varying float vAlpha;
-  varying float vRed;
-  void main() {
-    vec3 p = position;
-    float t = uTime * (0.025 + aSeed * 0.03) + aSeed * 10.0;
-    p.y = mod(p.y + t + 0.7, 1.6) - 0.7;
-    p.x += sin(t * 3.0 + aSeed * 20.0) * 0.03;
-    vec4 mv = modelViewMatrix * vec4(p, 1.0);
-    gl_Position = projectionMatrix * mv;
-    gl_PointSize = aSize * uPx * (2.2 / -mv.z);
-    vAlpha = smoothstep(-0.7, -0.45, p.y) * (1.0 - smoothstep(0.6, 0.9, p.y));
-    vRed = step(0.62, aSeed);
-  }
+const haloVert = /* glsl */ `
+  varying vec2 vUv;
+  void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
 `;
-const dustFrag = /* glsl */ `
-  uniform vec3 uRimColor;
-  varying float vAlpha;
-  varying float vRed;
+
+/* Thiruvachi: a fine ring with small flame tips, traced once and then left to breathe */
+const haloFrag = /* glsl */ `
+  uniform float uTime;
+  uniform float uDraw;
+  uniform vec3 uEmber;
+  varying vec2 vUv;
+  #define PI 3.14159265
+
+  float hash(float n) { return fract(sin(n) * 43758.5453); }
+  float noise(float x) { float i = floor(x), f = fract(x); return mix(hash(i), hash(i + 1.0), f * f * (3.0 - 2.0 * f)); }
+
   void main() {
-    float d = length(gl_PointCoord - 0.5);
-    float s = smoothstep(0.5, 0.0, d);
-    vec3 col = mix(vec3(1.0, 0.96, 0.92), uRimColor, vRed);
-    gl_FragColor = vec4(col, s * vAlpha * 0.55);
+    vec2 p = vUv - 0.5;
+    float r = length(p);
+    float ang = atan(p.x, -p.y);            // 0 at the bottom, increases clockwise
+    float t = (ang + PI) / (2.0 * PI);       // 0..1 around the ring
+    float drawn = smoothstep(uDraw, uDraw - 0.02, abs(t - 0.5) * 2.0);
+
+    float R = 0.415;
+    // flame tips around the outer edge
+    float flick = noise(t * 70.0 + uTime * 0.9) * 0.7 + noise(t * 160.0 - uTime * 1.7) * 0.3;
+    float tongue = 0.012 * smoothstep(0.35, 1.0, flick);   // a living edge, not beads
+
+    float line = exp(-abs(r - R) * 700.0);
+    float inner = exp(-abs(r - (R - 0.018)) * 1400.0) * 0.35;
+    float flame = exp(-max(r - R, 0.0) / max(tongue, 0.001) * 2.2) * step(R, r) * smoothstep(0.35, 1.0, flick) * 0.55;
+    float glow = exp(-abs(r - R) * 30.0) * 0.12;
+
+    float fadeBottom = smoothstep(0.02, 0.2, t) * smoothstep(0.98, 0.8, t);
+    float shimmer = 0.85 + 0.15 * noise(t * 30.0 - uTime * 0.8);
+    float v = (line * 1.1 + inner + flame * 0.9 + glow) * drawn * fadeBottom * shimmer;
+
+    vec3 hot = vec3(1.0, 0.72, 0.5);
+    vec3 col = mix(uEmber, hot, clamp(line * 0.6 + flame * 0.5, 0.0, 1.0));
+    gl_FragColor = vec4(col * v, v);
   }
 `;
 
 export function mountGoddess(stage) {
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const small = matchMedia("(max-width: 860px)").matches;
+  const finePointer = matchMedia("(pointer: fine)").matches;
   let renderer;
   try {
     renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
@@ -161,8 +121,7 @@ export function mountGoddess(stage) {
   renderer.domElement.setAttribute("aria-hidden", "true");
 
   const scene = new Scene();
-  const camera = new PerspectiveCamera(30, 1, 0.1, 20);
-  camera.position.set(0, 0, 2.15);
+  const camera = new PerspectiveCamera(28, 1, 0.1, 20);
 
   const loader = new TextureLoader();
   const load = (url, srgb) => new Promise((res, rej) => loader.load(url, (t) => {
@@ -172,99 +131,102 @@ export function mountGoddess(stage) {
   }, undefined, rej));
 
   const base = stage.dataset.goddess || "assets/goddess/";
-  Promise.all([load(base + "color.webp", true), load(base + "depth.webp", false)]).then(([color, depth]) => {
-    const seg = small ? 200 : 340;
-    const geo = new PlaneGeometry(ASPECT, 1, seg, Math.round(seg / ASPECT));
-    const uniforms = {
-      uColor: { value: color }, uDepth: { value: depth },
-      uTexel: { value: new Vector2(1.5 / IMG_W, 1.5 / IMG_H) },
-      uDepthScale: { value: 0.2 }, uRise: { value: reduce ? 1 : 0 }, uReveal: { value: reduce ? 1 : 0 },
-      uKey: { value: new Vector3(-0.5, 0.6, 0.9) }, uRim: { value: new Vector3(0.8, -0.2, 0.5) },
-      uRimColor: { value: new Color(0xe1251b) }, uTime: { value: 0 },
-      uPivot: { value: PARTS.map((p) => toUv(p.pivot)) },
-      uCenter: { value: PARTS.map((p) => toUv(p.center)) },
-      uRadius: { value: PARTS.map((p) => p.r / IMG_H) },
-      uAngle: { value: PARTS.map(() => 0) },
+  Promise.all([
+    load(base + "color.webp", true), load(base + "normal.webp", false), load(base + "depth.webp", false),
+  ]).then(([color, normal, depth]) => {
+    const ember = new Color(0xe1251b);
+    const u = {
+      uColor: { value: color }, uNormal: { value: normal }, uDepth: { value: depth },
+      uDepthScale: { value: 0.07 },
+      uLight: { value: new Vector3(-0.2, -0.9, 0.4) }, uLightAmt: { value: reduce ? 1 : 0 },
+      uEmber: { value: ember }, uEmberAmt: { value: reduce ? 1 : 0 },
     };
-    const mat = new ShaderMaterial({ uniforms, vertexShader: vert, fragmentShader: frag, transparent: true });
-    const figure = new Mesh(geo, mat);
+    const seg = small ? 160 : 260;
+    const figure = new Mesh(
+      new PlaneGeometry(ASPECT, 1, seg, Math.round(seg / ASPECT)),
+      new ShaderMaterial({ uniforms: u, vertexShader: figureVert, fragmentShader: figureFrag, transparent: true })
+    );
 
-    // dust and embers drifting through the space around her
-    const N = small ? 90 : 170;
-    const pos = new Float32Array(N * 3), size = new Float32Array(N), seed = new Float32Array(N);
-    for (let i = 0; i < N; i++) {
-      pos[i * 3] = (Math.random() - 0.5) * 1.5;
-      pos[i * 3 + 1] = Math.random() * 1.6 - 0.7;
-      pos[i * 3 + 2] = (Math.random() - 0.3) * 0.9;
-      size[i] = 1.2 + Math.random() * 2.8;
-      seed[i] = Math.random();
-    }
-    const dg = new BufferGeometry();
-    dg.setAttribute("position", new Float32BufferAttribute(pos, 3));
-    dg.setAttribute("aSize", new Float32BufferAttribute(size, 1));
-    dg.setAttribute("aSeed", new Float32BufferAttribute(seed, 1));
-    const dust = new Points(dg, new ShaderMaterial({
-      uniforms: { uTime: uniforms.uTime, uPx: { value: renderer.getPixelRatio() }, uRimColor: uniforms.uRimColor },
-      vertexShader: dustVert, fragmentShader: dustFrag, transparent: true, depthWrite: false, blending: AdditiveBlending,
-    }));
+    const hu = { uTime: { value: 0 }, uDraw: { value: reduce ? 1 : 0 }, uEmber: { value: ember } };
+    const halo = new Mesh(
+      new PlaneGeometry(1.12, 1.12),
+      new ShaderMaterial({ uniforms: hu, vertexShader: haloVert, fragmentShader: haloFrag, transparent: true, depthWrite: false, blending: AdditiveBlending })
+    );
+    halo.position.set(0, 0.06, -0.12);
 
     const root = new Group();
-    root.add(figure, dust);
+    root.add(halo, figure);
     scene.add(root);
     stage.appendChild(renderer.domElement);
 
-    const target = { x: 0, y: 0 }, cur = { x: 0, y: 0 };
-    let scrollK = 0;
+    /* pointer = light. When nobody is steering, the light drifts slowly on its own. */
+    const aim = new Vector2(-0.55, 0.45), cur = new Vector2(-0.55, 0.45);
+    let lastMove = -1e9, scrollK = 0;
     const onMove = (e) => {
-      target.x = (e.clientX / innerWidth) * 2 - 1;
-      target.y = (e.clientY / innerHeight) * 2 - 1;
+      const r = stage.getBoundingClientRect();
+      aim.set(((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1));
+      aim.clampScalar(-1.2, 1.2);
+      lastMove = performance.now();
     };
     const onScroll = () => {
       const r = stage.getBoundingClientRect();
       scrollK = Math.min(Math.max(-r.top / Math.max(r.height, 1), 0), 1);
     };
     if (!reduce) {
-      addEventListener("pointermove", onMove, { passive: true });
+      if (finePointer) addEventListener("pointermove", onMove, { passive: true });
       addEventListener("scroll", onScroll, { passive: true });
     }
 
+    let fitZ = 3;
     const resize = () => {
       const w = stage.clientWidth, h = stage.clientHeight;
       if (!w || !h) return;
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
-      // fit the figure's height, leave room for the turn
-      const fitH = 0.96, fitW = ASPECT * 1.16;
-      const dist = Math.max(fitH / (2 * Math.tan((camera.fov * Math.PI) / 360)), fitW / (2 * Math.tan((camera.fov * Math.PI) / 360)) / camera.aspect);
-      camera.position.z = dist;
+      const tan = Math.tan((camera.fov * Math.PI) / 360);
+      fitZ = Math.max(0.98 / (2 * tan), (ASPECT * 1.04) / (2 * tan) / camera.aspect);
       camera.updateProjectionMatrix();
     };
     new ResizeObserver(resize).observe(stage);
     resize();
 
+    const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+    const clamp01 = (x) => Math.min(Math.max(x, 0), 1);
     const t0 = performance.now();
-    const ease = (x) => 1 - Math.pow(1 - x, 3);
     let visible = true, raf = 0;
     new IntersectionObserver(([en]) => { visible = en.isIntersecting; if (visible) loop(); }).observe(stage);
     document.addEventListener("visibilitychange", () => !document.hidden && loop());
 
     function frame(now) {
       const t = (now - t0) / 1000;
-      uniforms.uTime.value = t;
-      if (!reduce) {
-        uniforms.uReveal.value = Math.min(t / 2.6, 1);
-        uniforms.uRise.value = ease(Math.min(Math.max((t - 0.3) / 2.4, 0), 1));
-        PARTS.forEach((p, i) => { uniforms.uAngle.value[i] = Math.sin(t * p.speed + p.phase) * p.amp + Math.sin(t * p.speed * 2.3 + p.phase) * p.amp * 0.25; });
+      hu.uTime.value = t;
+
+      // the unveiling: light rises from below, the ring traces itself, the camera settles
+      const lightIn = reduce ? 1 : ease(clamp01(t / 2.8));
+      const ringIn = reduce ? 1 : ease(clamp01((t - 1.0) / 2.6));
+      u.uLightAmt.value = lightIn * (1 - scrollK * 0.5);
+      u.uEmberAmt.value = ringIn;
+      hu.uDraw.value = ringIn;
+      camera.position.z = fitZ * (1 + 0.07 * (1 - ease(clamp01(t / 4.5)))) * (reduce ? 1 : 1);
+
+      // light path: intro sweep, then pointer, or a slow idle orbit
+      const idle = now - lastMove > 2600;
+      if (idle) {
+        const s = t * 0.22;
+        aim.set(-0.35 + Math.sin(s) * 0.75, 0.42 + Math.cos(s * 0.8) * 0.28);
       }
-      cur.x += (target.x - cur.x) * 0.04;
-      cur.y += (target.y - cur.y) * 0.04;
-      const idle = reduce ? 0 : Math.sin(t * 0.35) * 0.05;
-      root.rotation.y = cur.x * 0.34 + idle;
-      root.rotation.x = cur.y * 0.12 + scrollK * 0.25;
-      root.position.y = Math.sin(t * 0.6) * 0.008 - 0.035 - scrollK * 0.12;
-      // the red light follows the pointer, the key light stays high and to the left
-      uniforms.uRim.value.set(0.9 + cur.x * 0.6, -0.15 - cur.y * 0.6, 0.12);
-      uniforms.uKey.value.set(-0.55 + Math.sin(t * 0.2) * 0.15, 0.65, 0.85);
+      const k = reduce ? 1 : idle ? 0.02 : 0.07;
+      cur.lerp(aim, k);
+      const introY = -1.1 + 1.55 * lightIn;     // rises from beneath her
+      const ly = lightIn < 1 ? Math.min(introY, cur.y) : cur.y;
+      u.uLight.value.set(cur.x * 1.15, ly, 0.42);
+
+      // a sculpture on a slow turntable of breath: barely there
+      root.rotation.y = reduce ? 0 : cur.x * 0.06 + Math.sin(t * 0.25) * 0.012;
+      root.rotation.x = reduce ? 0 : -cur.y * 0.03 + scrollK * 0.08;
+      root.position.y = -0.02 - scrollK * 0.06;
+      halo.rotation.z = reduce ? 0 : t * 0.01;
+
       renderer.render(scene, camera);
     }
     function loop() {
@@ -272,7 +234,7 @@ export function mountGoddess(stage) {
       const tick = (now) => {
         if (!visible || document.hidden) return;
         frame(now);
-        raf = requestAnimationFrame(tick);
+        if (!reduce || now - t0 < 100) raf = requestAnimationFrame(tick);
       };
       raf = requestAnimationFrame(tick);
     }

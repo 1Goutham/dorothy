@@ -37,9 +37,29 @@ depth = np.clip(depth / max(depth.max(), 1e-6), 0, 1)
 
 rgba = np.dstack([lum * 255, lum * 255, lum * 255, mask * 255]).astype(np.uint8)
 Image.fromarray(rgba, "RGBA").save(out / "color.webp", quality=90, method=6)
-Image.fromarray((depth * 255).astype(np.uint8), "L").save(out / "depth.webp", quality=92, method=6)
+# G channel: a soft band just inside the silhouette, where light from behind wraps the outline
+rim = np.clip(mask - blur(mimg, 3), 0, 1)
+rim = np.clip(rim / max(rim.max(), 1e-6), 0, 1) ** 1.4
+dm = np.dstack([depth, rim, np.zeros_like(depth)])
+Image.fromarray((dm * 255).astype(np.uint8), "RGB").save(out / "depth.webp", quality=92, method=6)
 
 # Static fallback / poster: statue composited on black, as it appears on the site
 poster = np.dstack([lum * mask * 0.82 * 255] * 3).astype(np.uint8)
 Image.fromarray(poster, "RGB").save(out / "poster.webp", quality=84, method=6)
 print("maps", W, H)
+
+# Normal map: large-scale body volume plus carved detail taken from the sculpture's shading,
+# so a moving light catches the crown, jewellery, hair and drapery.
+L = Image.fromarray((lum * 255).astype(np.uint8))
+fine = (lum - blur(L, 1.2)) * mask
+mid = (blur(L, 1.2) - blur(L, 6)) * mask
+coarse = (blur(L, 6) - blur(L, 22)) * mask
+body = blur(mimg, 26)
+height = blur(Image.fromarray(np.clip(body * 255, 0, 255).astype(np.uint8)), 2) * 1.0 + coarse * 1.8 + mid * 1.6 + fine * 0.5
+gy, gx = np.gradient(height)
+strength = 22.0
+nx, ny, nz = -gx * strength, gy * strength, np.ones_like(height)
+ln = np.sqrt(nx ** 2 + ny ** 2 + nz ** 2)
+normal = np.dstack([nx / ln, ny / ln, nz / ln])
+Image.fromarray(((normal * 0.5 + 0.5) * 255).astype(np.uint8), "RGB").save(out / "normal.webp", quality=82, method=6)
+print("normal map written")
