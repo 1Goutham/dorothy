@@ -161,8 +161,8 @@ window.DOROTHY_KB = [
     cat: "Emergency",
     q: ["emergency", "i am in danger", "someone is hurting me", "help me now", "அவசரம்", "ஆபத்தில் இருக்கிறேன்", "உதவி வேண்டும் இப்போதே"],
     k: ["emergency", "danger", "unsafe", "attack", "violence", "police", "ambulance", "112", "அவசரம்", "ஆபத்து", "காவல்", "வன்முறை"],
-    en: "<p><strong>If you are in immediate danger, call 112</strong>, India's single emergency number for police, fire and ambulance.</p><ul><li>Mental health crisis: <strong>Tele-MANAS 14416</strong> (free, 24×7).</li><li>Free legal aid: <strong>15100</strong>.</li></ul><p>You can press <strong>Esc twice</strong> or the Quick exit button to leave this site instantly.</p>",
-    ta: "<p><strong>உடனடி ஆபத்தில் இருந்தால் 112-ஐ அழையுங்கள்</strong>: காவல், தீயணைப்பு, ஆம்புலன்ஸ் அனைத்துக்கும் ஒரே அவசர எண்.</p><ul><li>மனநல நெருக்கடி: <strong>டெலி-மனஸ் 14416</strong> (இலவசம், 24 மணி நேரம்).</li><li>இலவச சட்ட உதவி: <strong>15100</strong>.</li></ul><p><strong>Esc</strong> விசையை இருமுறை அழுத்தினாலோ 'விரைவு வெளியேறு' பொத்தானை அழுத்தினாலோ இந்தத் தளத்திலிருந்து உடனே வெளியேறலாம்.</p>",
+    en: "<p><strong>If you are in immediate danger, call 112</strong>, India's single emergency number for police, fire and ambulance.</p><ul><li>Mental health crisis: <strong>Tele-MANAS 14416</strong> (free, 24×7).</li><li>Free legal aid: <strong>15100</strong>.</li></ul><p>You can press <strong>Esc twice</strong> to leave this site instantly.</p>",
+    ta: "<p><strong>உடனடி ஆபத்தில் இருந்தால் 112-ஐ அழையுங்கள்</strong>: காவல், தீயணைப்பு, ஆம்புலன்ஸ் அனைத்துக்கும் ஒரே அவசர எண்.</p><ul><li>மனநல நெருக்கடி: <strong>டெலி-மனஸ் 14416</strong> (இலவசம், 24 மணி நேரம்).</li><li>இலவச சட்ட உதவி: <strong>15100</strong>.</li></ul><p><strong>Esc</strong> விசையை இருமுறை அழுத்தினால் இந்தத் தளத்திலிருந்து உடனே வெளியேறலாம்.</p>",
     src: [
       { t: "Emergency Response Support System · 112", u: "https://112.gov.in/" },
       { t: "Tele-MANAS · MoHFW", u: "https://telemanas.mohfw.gov.in/" },

@@ -27,9 +27,8 @@
     );
   }
 
-  /* Quick exit: leaves instantly and replaces history entry. Esc twice also works. */
+  /* Safety: pressing Esc twice leaves instantly and replaces the history entry. */
   const exit = () => { window.location.replace("https://www.google.com/search?q=weather"); };
-  document.querySelectorAll("[data-quick-exit]").forEach((b) => b.addEventListener("click", exit));
   let lastEsc = 0;
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
