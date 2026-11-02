@@ -48,17 +48,14 @@ poster = np.dstack([lum * mask * 0.82 * 255] * 3).astype(np.uint8)
 Image.fromarray(poster, "RGB").save(out / "poster.webp", quality=84, method=6)
 print("maps", W, H)
 
-# Normal map: large-scale body volume plus carved detail taken from the sculpture's shading,
-# so a moving light catches the crown, jewellery, hair and drapery.
+# Normal map: only the large, soft forms (body, limbs, drapery folds), so a moving light
+# glides over her like studio light instead of picking out every carved line.
 L = Image.fromarray((lum * 255).astype(np.uint8))
-fine = (lum - blur(L, 1.2)) * mask
-mid = (blur(L, 1.2) - blur(L, 6)) * mask
-coarse = (blur(L, 6) - blur(L, 22)) * mask
-body = blur(mimg, 26)
-height = blur(Image.fromarray(np.clip(body * 255, 0, 255).astype(np.uint8)), 2) * 1.0 + coarse * 1.8 + mid * 1.6 + fine * 0.5
-gy, gx = np.gradient(height)
-strength = 22.0
-nx, ny, nz = -gx * strength, gy * strength, np.ones_like(height)
+soft = blur(mimg, 30) + (blur(L, 8) - blur(L, 30)) * mask * 0.9
+soft = blur(Image.fromarray((np.clip(soft, 0, 1) * 255).astype(np.uint8)), 3)
+gy, gx = np.gradient(soft)
+strength = 14.0
+nx, ny, nz = -gx * strength, gy * strength, np.ones_like(soft)
 ln = np.sqrt(nx ** 2 + ny ** 2 + nz ** 2)
 normal = np.dstack([nx / ln, ny / ln, nz / ln])
 Image.fromarray(((normal * 0.5 + 0.5) * 255).astype(np.uint8), "RGB").save(out / "normal.webp", quality=82, method=6)

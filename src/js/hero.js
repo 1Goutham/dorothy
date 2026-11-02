@@ -40,25 +40,25 @@ const figureFrag = /* glsl */ `
 
     vec3 n = normalize(texture2D(uNormal, vUv).xyz * 2.0 - 1.0);
     float h = texture2D(uDepth, vUv).r;
-    float alb = pow(c.r, 1.15);
+    float alb = pow(c.r, 1.05);
     vec3 L = normalize(uLight);
     vec3 V = vec3(0.0, 0.0, 1.0);
 
-    // warm gallery key light raking across the carving
-    float diff = max(dot(n, L), 0.0);
-    float spec = pow(max(dot(n, normalize(L + V)), 0.0), 80.0) * smoothstep(0.55, 0.9, c.r);
-    vec3 col = vec3(1.0, 0.95, 0.88) * alb * (0.03 + 1.35 * pow(diff, 1.25)) * uLightAmt;
-    col += vec3(1.0, 0.93, 0.82) * spec * 0.75 * uLightAmt;
+    // soft wrapped studio light over the large forms; the sculpture keeps its own shading
+    float wrap = (max(dot(n, L), 0.0) + 0.35) / 1.35;
+    float sheen = pow(max(dot(n, normalize(L + V)), 0.0), 12.0) * 0.12;
+    vec3 col = vec3(1.0, 0.975, 0.95) * alb * (0.62 + 0.5 * wrap);
+    col += vec3(1.0, 0.97, 0.93) * sheen * alb;
 
-    // a faint cool fill so the shadows keep their form
-    col += vec3(0.62, 0.68, 0.8) * alb * 0.07 * (0.5 + 0.5 * n.y) * uLightAmt;
+    // a wide pool of light that follows the pointer and falls off gently
+    vec2 lp = vec2(0.5, 0.55) + L.xy * vec2(0.32, 0.3);
+    vec2 dp = (vUv - lp) * vec2(1.0, 0.85);
+    float pool = exp(-dot(dp, dp) * 2.4);
+    col *= mix(0.62, 1.04, pool);
 
-    // ember light from the ring of fire behind her, only along the outline
-    float rim = texture2D(uDepth, vUv).g;
-    col += uEmber * rim * (0.3 + alb) * 0.8 * uEmberAmt;
-
-    // depth: recesses fall into shadow
-    col *= mix(0.55, 1.0, h);
+    col *= mix(0.86, 1.0, h);
+    col *= uLightAmt;
+    col += uEmber * texture2D(uDepth, vUv).g * alb * 0.12 * uEmberAmt;
 
     gl_FragColor = vec4(col, a);
     #include <colorspace_fragment>
@@ -100,7 +100,7 @@ const haloFrag = /* glsl */ `
 
     float fadeBottom = smoothstep(0.02, 0.2, t) * smoothstep(0.98, 0.8, t);
     float shimmer = 0.85 + 0.15 * noise(t * 30.0 - uTime * 0.8);
-    float v = (line * 1.1 + inner + flame * 0.9 + glow) * drawn * fadeBottom * shimmer;
+    float v = (line * 0.75 + inner * 0.6 + flame * 0.55 + glow * 0.8) * drawn * fadeBottom * shimmer;
 
     vec3 hot = vec3(1.0, 0.72, 0.5);
     vec3 col = mix(uEmber, hot, clamp(line * 0.6 + flame * 0.5, 0.0, 1.0));
@@ -219,7 +219,7 @@ export function mountGoddess(stage) {
       cur.lerp(aim, k);
       const introY = -1.1 + 1.55 * lightIn;     // rises from beneath her
       const ly = lightIn < 1 ? Math.min(introY, cur.y) : cur.y;
-      u.uLight.value.set(cur.x * 1.15, ly, 0.42);
+      u.uLight.value.set(cur.x * 0.9, ly * 0.85, 0.7);
 
       // a sculpture on a slow turntable of breath: barely there
       root.rotation.y = reduce ? 0 : cur.x * 0.06 + Math.sin(t * 0.25) * 0.012;
