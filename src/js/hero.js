@@ -78,8 +78,12 @@ const figureFrag = /* glsl */ `
       float g = vnoise(vUv * vec2(${(300 * ASPECT).toFixed(1)}, 300.0)) * 0.55 + vnoise(vUv * vec2(${(70 * ASPECT).toFixed(1)}, 70.0)) * 0.45;
       float cut = e * 1.08;
       float keep = smoothstep(cut - 0.015, cut + 0.015, g);
-      float rim = (1.0 - smoothstep(0.0, 0.07, g - cut)) * keep;
-      col = mix(col, col * 1.25 + vec3(0.42, 0.25, 0.12) * alb, rim * 0.85);
+      // the broken lip: a shadowed crack, a chalky inner face, a trace of warmth
+      float lip = (1.0 - smoothstep(0.0, 0.035, g - cut)) * keep;
+      float face = (1.0 - smoothstep(0.035, 0.09, g - cut)) * keep - lip;
+      col = mix(col, col * 0.38, lip * 0.8);
+      col += vec3(1.0, 0.96, 0.9) * alb * face * 0.16 * uLightAmt;
+      col += vec3(0.5, 0.26, 0.12) * lip * 0.1 * uLightAmt;
       a *= keep;
       if (a < 0.01) discard;
     }
@@ -89,41 +93,95 @@ const figureFrag = /* glsl */ `
   }
 `;
 
-/* Sand grains: each carries the tone of the stone it broke from */
+/* Falling stone. Fine grains are lit as tiny spheres; larger chips carry a patch of the
+   actual carving they broke from and tumble, flashing as their faces catch the light. */
 const sandVert = /* glsl */ `
-  attribute float aLum;
+  attribute vec2 aUv;
   attribute float aAlpha;
   attribute float aSize;
+  attribute float aRot;
+  attribute float aKind;
   attribute float aHot;
+  attribute float aSeed;
   uniform float uPx;
-  uniform float uLight;
-  varying float vLum;
+  varying vec2 vUv;
   varying float vAlpha;
+  varying float vRot;
+  varying float vKind;
   varying float vHot;
+  varying float vSeed;
+  varying float vSpan;
   void main() {
-    vLum = aLum * uLight;
-    vAlpha = aAlpha;
-    vHot = aHot;
+    vUv = aUv; vAlpha = aAlpha; vRot = aRot; vKind = aKind; vHot = aHot; vSeed = aSeed;
+    vSpan = aSize * 0.0021;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
     gl_PointSize = aSize * uPx * (2.6 / -mv.z);
   }
 `;
 const sandFrag = /* glsl */ `
-  varying float vLum;
+  uniform sampler2D uColor;
+  uniform vec3 uLightDir;
+  uniform float uLight;
+  varying vec2 vUv;
   varying float vAlpha;
+  varying float vRot;
+  varying float vKind;
   varying float vHot;
+  varying float vSeed;
+  varying float vSpan;
   void main() {
     if (vAlpha < 0.01) discard;
-    vec2 d = gl_PointCoord - 0.5;
-    float r = dot(d, d);
-    if (r > 0.25) discard;
-    float soft = smoothstep(0.25, 0.12, r);
-    vec3 stone = vec3(1.0, 0.965, 0.92) * (0.22 + 1.0 * vLum);
-    vec3 hot = vec3(1.0, 0.74, 0.42) * (1.1 + 0.3 * (1.0 - r * 4.0));
-    vec3 col = mix(stone, hot, vHot);
-    gl_FragColor = vec4(col, vAlpha * soft);
+    vec2 p = gl_PointCoord - 0.5;
+    p.y = -p.y;
+    float c = cos(vRot), s = sin(vRot);
+    vec2 q = vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+    float r = length(q);
+
+    // chips have a broken, faceted outline; grains are round
+    float ang = atan(q.y, q.x) + 3.14159;
+    float facet = 0.5 * (0.66 + 0.34 * fract(sin(floor(ang * 1.12) * 91.7 + vSeed * 13.0) * 43758.5453));
+    float outline = mix(0.5, facet, vKind);
+    if (r > outline) discard;
+
+    vec3 L = normalize(uLightDir);
+    vec3 sphere = normalize(vec3(q * 2.0, sqrt(max(0.0, 0.25 - r * r)) * 2.0 + 0.05));
+    vec3 face = normalize(vec3(sin(vRot * 1.31 + vSeed) * 0.75, cos(vRot * 0.87 + vSeed) * 0.75, 0.55));
+    vec3 n = normalize(mix(sphere, face, vKind));
+    float diff = max(dot(n, L), 0.0);
+    float spec = pow(max(dot(n, normalize(L + vec3(0.0, 0.0, 1.0))), 0.0), 28.0);
+
+    float alb = pow(texture2D(uColor, vUv + q * vec2(vSpan / ${ASPECT.toFixed(5)}, vSpan) * vKind).r, 1.05);
+    vec3 col = vec3(1.0, 0.965, 0.92) * alb * (0.3 + 1.05 * diff) * uLight;
+    col += vec3(1.0, 0.97, 0.92) * spec * (0.25 + 0.45 * vKind) * uLight;
+    col = mix(col, vec3(1.0, 0.74, 0.42) * 1.15, vHot);
+
+    float aa = mix(smoothstep(0.5, 0.36, r), smoothstep(outline, outline - 0.05, r), vKind);
+    gl_FragColor = vec4(col, vAlpha * aa);
     #include <colorspace_fragment>
+  }
+`;
+
+/* Stone dust: a faint powder that rises where the stone breaks, then settles */
+const dustVert = /* glsl */ `
+  attribute float aAlpha;
+  attribute float aSize;
+  uniform float uPx;
+  varying float vAlpha;
+  void main() {
+    vAlpha = aAlpha;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mv;
+    gl_PointSize = aSize * uPx * (2.6 / -mv.z);
+  }
+`;
+const dustFrag = /* glsl */ `
+  uniform float uLight;
+  varying float vAlpha;
+  void main() {
+    float r = length(gl_PointCoord - 0.5);
+    float a = smoothstep(0.5, 0.0, r);
+    gl_FragColor = vec4(vec3(0.62, 0.6, 0.57) * uLight, a * a * vAlpha);
   }
 `;
 
@@ -243,46 +301,75 @@ export function mountGoddess(stage) {
     );
     halo.position.set(0, 0.06, -0.12);
 
-    const MAX = small ? 2400 : 5200;
-    const gPos = new Float32Array(MAX * 3), gVel = new Float32Array(MAX * 3);
-    const gLum = new Float32Array(MAX), gAlpha = new Float32Array(MAX), gSize = new Float32Array(MAX);
-    const gAge = new Float32Array(MAX), gLife = new Float32Array(MAX).fill(-1), gSeed = new Float32Array(MAX);
-    const gHot = new Float32Array(MAX), gHeat = new Float32Array(MAX);
+    const MAX = small ? 2600 : 6000;
+    const gPos = new Float32Array(MAX * 3), gVel = new Float32Array(MAX * 3), gUv = new Float32Array(MAX * 2);
+    const gAlpha = new Float32Array(MAX), gSize = new Float32Array(MAX), gRot = new Float32Array(MAX), gSpin = new Float32Array(MAX);
+    const gKind = new Float32Array(MAX), gHot = new Float32Array(MAX), gHeat = new Float32Array(MAX), gSeed = new Float32Array(MAX);
+    const gAge = new Float32Array(MAX), gLife = new Float32Array(MAX).fill(-1);
     const sandGeo = new BufferGeometry();
-    const posAttr = new BufferAttribute(gPos, 3).setUsage(DynamicDrawUsage);
-    const alphaAttr = new BufferAttribute(gAlpha, 1).setUsage(DynamicDrawUsage);
-    const lumAttr = new BufferAttribute(gLum, 1).setUsage(DynamicDrawUsage);
-    const sizeAttr = new BufferAttribute(gSize, 1).setUsage(DynamicDrawUsage);
-    const hotAttr = new BufferAttribute(gHot, 1).setUsage(DynamicDrawUsage);
-    sandGeo.setAttribute("position", posAttr);
-    sandGeo.setAttribute("aAlpha", alphaAttr);
-    sandGeo.setAttribute("aLum", lumAttr);
-    sandGeo.setAttribute("aSize", sizeAttr);
-    sandGeo.setAttribute("aHot", hotAttr);
-    const su = { uPx: { value: renderer.getPixelRatio() }, uLight: { value: 1 } };
+    const dyn = (arr, n) => new BufferAttribute(arr, n).setUsage(DynamicDrawUsage);
+    const A = {
+      position: dyn(gPos, 3), aUv: dyn(gUv, 2), aAlpha: dyn(gAlpha, 1), aSize: dyn(gSize, 1),
+      aRot: dyn(gRot, 1), aKind: dyn(gKind, 1), aHot: dyn(gHot, 1), aSeed: dyn(gSeed, 1),
+    };
+    Object.entries(A).forEach(([k, v]) => sandGeo.setAttribute(k, v));
+    const su = { uPx: { value: renderer.getPixelRatio() }, uLight: { value: 1 }, uColor: { value: color }, uLightDir: { value: new Vector3(0, 0, 1) } };
     const sand = new Points(sandGeo, new ShaderMaterial({
       uniforms: su, vertexShader: sandVert, fragmentShader: sandFrag, transparent: true, depthWrite: false,
     }));
     sand.frustumCulled = false;
-    let head = 0, liveGrains = 0;
+    sand.renderOrder = 2;
+    let head = 0;
 
-    const spawn = (ux, uy, ox, oy) => {
+    const DMAX = small ? 140 : 320;
+    const dPos = new Float32Array(DMAX * 3), dVel = new Float32Array(DMAX * 3);
+    const dAlpha = new Float32Array(DMAX), dSize = new Float32Array(DMAX), dAge = new Float32Array(DMAX), dLife = new Float32Array(DMAX).fill(-1);
+    const dustGeo = new BufferGeometry();
+    const DA = { position: dyn(dPos, 3), aAlpha: dyn(dAlpha, 1), aSize: dyn(dSize, 1) };
+    Object.entries(DA).forEach(([k, v]) => dustGeo.setAttribute(k, v));
+    const du = { uPx: su.uPx, uLight: su.uLight };
+    const dust = new Points(dustGeo, new ShaderMaterial({
+      uniforms: du, vertexShader: dustVert, fragmentShader: dustFrag, transparent: true, depthWrite: false, blending: AdditiveBlending,
+    }));
+    dust.frustumCulled = false;
+    dust.renderOrder = 3;
+    let dHead = 0;
+
+    const spawn = (ux, uy, ox, oy, chip) => {
       const k = head; head = (head + 1) % MAX;
       gPos[k * 3] = (ux - 0.5) * ASPECT;
       gPos[k * 3 + 1] = uy - 0.5;
       gPos[k * 3 + 2] = at(depPx, ux, uy, 0) * 0.07 + 0.004;
-      const out = 0.045 + Math.random() * 0.05;
-      gVel[k * 3] = ox * out + (Math.random() - 0.5) * 0.05;
-      gVel[k * 3 + 1] = oy * out * 0.6 + Math.random() * 0.05;
-      gVel[k * 3 + 2] = 0.01 + Math.random() * 0.06;
-      gLum[k] = Math.pow(at(colPx, ux, uy, 0), 1.05);
-      gSize[k] = 1.5 + Math.pow(Math.random(), 3) * 3.2;
-      gAge[k] = 0; gLife[k] = 1.7 + Math.random() * 1.6; gSeed[k] = Math.random() * 6.283;
-      gHeat[k] = Math.random() < 0.26 ? 0.75 + Math.random() * 0.25 : 0; // some grains break off still warm
+      gUv[k * 2] = ux; gUv[k * 2 + 1] = uy;
+      // the break pushes stone outward and toward the viewer, a little upward at first
+      const burst = chip ? 0.05 + Math.random() * 0.09 : 0.03 + Math.random() * 0.08;
+      gVel[k * 3] = ox * burst + (Math.random() - 0.5) * 0.06;
+      gVel[k * 3 + 1] = oy * burst * 0.5 + Math.random() * (chip ? 0.14 : 0.09);
+      gVel[k * 3 + 2] = 0.04 + Math.random() * (chip ? 0.18 : 0.1);
+      gKind[k] = chip ? 1 : 0;
+      gSize[k] = chip ? 4.2 + Math.random() * 4.6 : 1.3 + Math.pow(Math.random(), 2.5) * 2.4;
+      gRot[k] = Math.random() * 6.283;
+      gSpin[k] = chip ? (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 6) : 0;
+      gSeed[k] = Math.random();
+      gAge[k] = 0; gLife[k] = chip ? 2.4 : 1.8 + Math.random() * 1.6;
+      gHeat[k] = !chip && Math.random() < 0.16 ? 0.7 + Math.random() * 0.3 : 0;
+    };
+    const puff = (ux, uy) => {
+      const k = dHead; dHead = (dHead + 1) % DMAX;
+      dPos[k * 3] = (ux - 0.5) * ASPECT; dPos[k * 3 + 1] = uy - 0.5; dPos[k * 3 + 2] = 0.06;
+      dVel[k * 3] = (Math.random() - 0.5) * 0.04; dVel[k * 3 + 1] = 0.01 + Math.random() * 0.035; dVel[k * 3 + 2] = 0.02 + Math.random() * 0.04;
+      dAge[k] = 0; dLife[k] = 1.6 + Math.random() * 1.4; dSize[k] = 14 + Math.random() * 18;
+    };
+    const breakAt = (ux, uy, ox, oy, rich) => {
+      if (!solid(ux, uy)) return;
+      const n = rich ? 3 : 2;
+      for (let g = 0; g < n; g++) spawn(ux + (Math.random() - 0.5) / GW, uy + (Math.random() - 0.5) / GH, ox, oy, false);
+      if (Math.random() < (rich ? 0.2 : 0.1)) spawn(ux, uy, ox, oy, true);
+      if (Math.random() < 0.07) puff(ux, uy);
     };
 
     const root = new Group();
-    root.add(halo, figure, sand);
+    root.add(halo, figure, sand, dust);
     scene.add(root);
     stage.appendChild(renderer.domElement);
 
@@ -318,28 +405,32 @@ export function mountGoddess(stage) {
         for (let s = 1; s <= Math.max(1, steps); s++) {
           const f = touch.has ? s / steps : 1;
           const cu = touch.pu + (touch.u - touch.pu) * f, cv = touch.pv + (touch.v - touch.pv) * f;
-          const x0 = Math.max(0, Math.floor((cu - BRUSH / ASPECT) * GW)), x1 = Math.min(GW - 1, Math.ceil((cu + BRUSH / ASPECT) * GW));
-          const y0 = Math.max(0, Math.floor((cv - BRUSH) * GH)), y1 = Math.min(GH - 1, Math.ceil((cv + BRUSH) * GH));
+          const reach = BRUSH * 1.35;
+          const x0 = Math.max(0, Math.floor((cu - reach / ASPECT) * GW)), x1 = Math.min(GW - 1, Math.ceil((cu + reach / ASPECT) * GW));
+          const y0 = Math.max(0, Math.floor((cv - reach) * GH)), y1 = Math.min(GH - 1, Math.ceil((cv + reach) * GH));
           for (let y = y0; y <= y1; y++) {
             for (let x = x0; x <= x1; x++) {
               const ux = (x + 0.5) / GW, uy = (y + 0.5) / GH;
               const dx = (ux - cu) * ASPECT, dy = uy - cv;
               const d = Math.sqrt(dx * dx + dy * dy);
-              if (d > BRUSH) continue;
-              const jag = 0.82 + 0.36 * Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453 % 1);
-              const target = Math.min(1, Math.max(0, (1 - d / (BRUSH * jag)) * 1.9));
+              if (d > reach) continue;
               const k = y * GW + x;
               const before = erode[k];
+              const ox = dx / (d || 1), oy = dy / (d || 1);
+              if (d > BRUSH) {
+                // the margin keeps crumbling a little while the pointer rests, so the break grows raggedly
+                const chance = dt * 1.4 * (1 - (d - BRUSH) / (reach - BRUSH)) / Math.max(1, steps);
+                if (before < 0.45 && Math.random() < chance) {
+                  erode[k] = 0.7; changed = true;
+                  breakAt(ux, uy, ox, oy, false);
+                }
+                continue;
+              }
+              const jag = 0.82 + 0.36 * Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453 % 1);
+              const target = Math.min(1, Math.max(0, (1 - d / (BRUSH * jag)) * 1.9));
               if (target > before) {
                 erode[k] = target; changed = true;
-                // stone that has just given way becomes grains
-                if (before < 0.45 && target >= 0.45 && solid(ux, uy)) {
-                  const n = 2 + (Math.random() < 0.5 ? 1 : 0);
-                  for (let g = 0; g < n; g++) {
-                    const gx = ux + (Math.random() - 0.5) / GW, gy = uy + (Math.random() - 0.5) / GH;
-                    spawn(gx, gy, dx / (d || 1), dy / (d || 1));
-                  }
-                }
+                if (before < 0.45 && target >= 0.45) breakAt(ux, uy, ox, oy, true);
               }
             }
           }
@@ -348,7 +439,7 @@ export function mountGoddess(stage) {
         for (let g = 0; g < (small ? 8 : 16); g++) {
           const ang = Math.random() * 6.283, rr = BRUSH * (0.6 + Math.random() * 0.45);
           const ux = touch.u + (Math.cos(ang) * rr) / ASPECT, uy = touch.v + Math.sin(ang) * rr;
-          if (solid(ux, uy)) spawn(ux, uy, Math.cos(ang), Math.sin(ang));
+          if (solid(ux, uy)) spawn(ux, uy, Math.cos(ang), Math.sin(ang), Math.random() < 0.04);
         }
         touch.pu = touch.u; touch.pv = touch.v; touch.has = true;
       } else {
@@ -361,23 +452,35 @@ export function mountGoddess(stage) {
     }
 
     function sandStep(dt, t) {
-      liveGrains = 0;
       for (let k = 0; k < MAX; k++) {
         if (gLife[k] < 0) { gAlpha[k] = 0; continue; }
         gAge[k] += dt;
-        if (gAge[k] >= gLife[k]) { gLife[k] = -1; gAlpha[k] = 0; continue; }
-        liveGrains++;
         const i = k * 3;
-        gVel[i + 1] -= 0.62 * dt;                                       // weight
-        gVel[i] += Math.sin(t * 1.4 + gSeed[k]) * 0.035 * dt;           // a breath of air
-        const drag = Math.pow(0.35, dt);
-        gVel[i] *= drag; gVel[i + 2] *= drag;
+        if (gAge[k] >= gLife[k] || gPos[i + 1] < -0.78) { gLife[k] = -1; gAlpha[k] = 0; continue; }
+        const chip = gKind[k] > 0.5;
+        gVel[i + 1] -= (chip ? 1.9 : 1.25) * dt;                         // weight: chips drop, fine sand drifts
+        gVel[i] += Math.sin(t * 1.3 + gSeed[k] * 40.0) * (chip ? 0.01 : 0.05) * dt;
+        const drag = Math.exp(-(chip ? 0.35 : 1.1) * dt);
+        gVel[i] *= drag; gVel[i + 1] *= chip ? 1 : Math.exp(-0.35 * dt); gVel[i + 2] *= drag;
         gPos[i] += gVel[i] * dt; gPos[i + 1] += gVel[i + 1] * dt; gPos[i + 2] += gVel[i + 2] * dt;
+        gRot[k] += gSpin[k] * dt;
         const life = gAge[k] / gLife[k];
-        gHot[k] = gHeat[k] * Math.max(0, 1 - life * 1.6);               // warm grains cool as they fall
-        gAlpha[k] = Math.min(1, gAge[k] / 0.08) * Math.pow(1 - life, 1.6) * (gPos[i + 1] > -0.62 ? 1 : 0.4);
+        gHot[k] = gHeat[k] * Math.max(0, 1 - life * 1.8);
+        const low = Math.min(1, Math.max(0, (gPos[i + 1] + 0.78) / 0.3));   // fade as it falls past her feet
+        gAlpha[k] = Math.min(1, gAge[k] / 0.05) * Math.min(1, (1 - life) / 0.25) * low;
       }
-      posAttr.needsUpdate = alphaAttr.needsUpdate = lumAttr.needsUpdate = sizeAttr.needsUpdate = hotAttr.needsUpdate = true;
+      for (let k = 0; k < DMAX; k++) {
+        if (dLife[k] < 0) { dAlpha[k] = 0; continue; }
+        dAge[k] += dt;
+        if (dAge[k] >= dLife[k]) { dLife[k] = -1; dAlpha[k] = 0; continue; }
+        const i = k * 3, life = dAge[k] / dLife[k];
+        dVel[i + 1] -= 0.012 * dt;
+        dPos[i] += dVel[i] * dt; dPos[i + 1] += dVel[i + 1] * dt; dPos[i + 2] += dVel[i + 2] * dt;
+        dSize[k] += dt * 16;
+        dAlpha[k] = Math.sin(Math.PI * life) * 0.085;
+      }
+      Object.values(A).forEach((a) => (a.needsUpdate = true));
+      Object.values(DA).forEach((a) => (a.needsUpdate = true));
     }
 
     /* pointer = light. When nobody is steering, the light drifts slowly on its own. */
@@ -452,6 +555,7 @@ export function mountGoddess(stage) {
       root.position.y = -0.02 - scrollK * 0.06;
       halo.rotation.z = reduce ? 0 : t * 0.01;
       su.uLight.value = u.uLightAmt.value;
+      su.uLightDir.value.copy(u.uLight.value);
 
       renderer.render(scene, camera);
     }
