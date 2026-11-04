@@ -20,7 +20,7 @@ jobs:
         id: lychee
         uses: lycheeverse/lychee-action@v2
         with:
-          args: --no-progress --max-retries 3 --timeout 30 --accept 200,203,206,301,302,403,429 "src/pages/*.html" "src/data/*.js"
+          args: --no-progress --max-retries 3 --timeout 30 --accept 200,203,206,301,302,403,429 "app/**/*.tsx" "data/*.ts"
           fail: false
       - name: Open an issue if any link is broken
         if: steps.lychee.outputs.exit_code != 0

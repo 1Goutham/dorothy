@@ -1,6 +1,6 @@
 """Builds the goddess colour + depth maps used by the 3D relief hero.
 
-python3 tools/goddess_maps.py <source-image> assets/goddess
+python3 tools/goddess_maps.py <source-image> public/assets/goddess
 The source is a grey sculpture on a transparent background. Depth is reconstructed
 from the silhouette (body volume) and the baked shading (surface relief).
 """
